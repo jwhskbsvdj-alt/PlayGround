@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Big Land</title><link rel="icon" href="data:," />
+<style>
+  html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#143f58;font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;touch-action:none}
+  canvas{display:block;width:100%;height:100%;cursor:crosshair}
+  .hud{position:fixed;inset:0;pointer-events:none;color:white;text-shadow:0 2px 3px #123}
+  .top{position:absolute;left:14px;right:14px;top:12px;display:flex;justify-content:space-between;align-items:flex-start}
+  .brand{font-weight:1000;font-size:23px;letter-spacing:-1px}.brand span{color:#ffe27a}
+  .stats{display:flex;gap:7px}.pill{height:38px;min-width:74px;padding:0 12px;border:2px solid rgba(255,255,255,.5);border-radius:20px;background:rgba(15,47,57,.72);display:flex;align-items:center;justify-content:center;gap:7px;font-weight:900;font-size:16px;backdrop-filter:blur(5px)}
+  .pill .icon{font-size:19px}.progress{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);width:min(420px,52vw);height:18px;border:2px solid rgba(255,255,255,.65);border-radius:12px;background:rgba(12,45,55,.7);overflow:hidden}.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ffe66b,#ffb347);transition:width .25s}
+  .objective{position:absolute;left:50%;bottom:43px;transform:translateX(-50%);font-size:13px;font-weight:850;text-align:center;white-space:nowrap}
+  .toast{position:absolute;left:50%;top:82px;transform:translate(-50%,0);padding:9px 16px;border-radius:18px;background:#fff;color:#183b43;font-weight:900;opacity:0;transition:.25s}.toast.show{opacity:1;transform:translate(-50%,8px)}
+  .panel{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.92);width:min(390px,calc(100vw - 40px));border:3px solid rgba(255,255,255,.75);border-radius:24px;background:rgba(19,70,78,.94);text-align:center;padding:26px 24px 22px;box-shadow:0 18px 60px rgba(0,40,50,.35);opacity:0;pointer-events:none;transition:.25s}.panel.show{opacity:1;transform:translate(-50%,-50%) scale(1);pointer-events:auto}.panel h1{margin:0 0 5px;font-size:36px}.panel p{margin:5px 0 18px;color:#dbf4ed}.panel button{pointer-events:auto;border:0;border-radius:14px;padding:13px 22px;background:#ffe36b;color:#23444a;font-size:17px;font-weight:950;cursor:pointer}
+  .joystick{display:none;position:absolute;left:25px;bottom:25px;width:92px;height:92px;border:3px solid rgba(255,255,255,.35);border-radius:50%;background:rgba(20,75,82,.28)}.joystick i{position:absolute;left:27px;top:27px;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.75);box-shadow:0 3px 10px rgba(0,0,0,.15)}
+  @media(pointer:coarse),(max-width:700px){.joystick{display:block}.progress{bottom:34px;width:38vw}.objective{bottom:58px}.brand{font-size:19px}.stats{gap:4px}.pill{height:34px;min-width:58px;padding:0 9px;font-size:14px}.top{top:8px}.pill .icon{font-size:16px}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div class="hud">
+  <div class="top"><div class="brand">BIG <span>LAND</span></div><div class="stats"><div class="pill"><span class="icon">🌲</span><span id="wood">0</span></div><div class="pill"><span class="icon">🪨</span><span id="stone">0</span></div><div class="pill"><span class="icon">⭐</span><span id="level">1</span></div></div></div>
+  <div class="objective" id="objective">Expand your land • gather 20 wood</div><div class="progress"><i id="bar"></i></div>
+  <div class="toast" id="toast">Land expanded!</div>
+  <div class="panel" id="panel"><h1 id="pTitle">A New Shore!</h1><p id="pText">The island is growing. Keep exploring.</p><button id="pButton">Continue</button></div>
+  <div class="joystick" id="joy"><i id="knob"></i></div>
+</div>
+<script>
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+let W,H,DPR=1,keys={},pointer={x:0,y:0,down:false};
+const world={x:0,y:0,r:270,angle:0};
+let player={x:0,y:0,r:15,wood:0,stone:0,level:1,dir:0,walk:0};
+let resources=[],decor=[],goal=20,particles=[];
+function rand(a,b){return a+Math.random()*(b-a)}
+function resize(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=W*DPR;canvas.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',resize);resize();
+function dist(a,b,c,d){return Math.hypot(a-c,b-d)}
+function inIsland(x,y){return dist(x,y,world.x,world.y)<world.r-20}
+function placeResource(kind){for(let n=0;n<100;n++){let a=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*(world.r-55),x=world.x+Math.cos(a)*r,y=world.y+Math.sin(a)*r;if(dist(x,y,player.x,player.y)>90&&resources.every(q=>dist(q.x,q.y,x,y)>30)){resources.push({kind,x,y,got:false,pulse:Math.random()*6});return}}}
+function init(){world.x=0;world.y=0;world.r=270;player.x=0;player.y=0;player.wood=0;player.stone=0;player.level=1;resources=[];decor=[];particles=[];goal=20;
+  for(let i=0;i<26;i++)placeResource('wood');for(let i=0;i<11;i++)placeResource('stone');
+  for(let i=0;i<110;i++){let a=Math.random()*6.28,r=Math.sqrt(Math.random())*(world.r-18);decor.push({x:world.x+Math.cos(a)*r,y:world.y+Math.sin(a)*r,s:2+Math.random()*5,hue:Math.random()>.7?'rock':'grass'})}
+}
+init();
+function screen(){return {x:W/2+(player.x-player.x),y:H/2+(player.y-player.y)}}
+function camX(){return player.x-W/2}function camY(){return player.y-H/2}
+function draw(){
+  ctx.fillStyle='#56b9b2';ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.translate(W/2-player.x,H/2-player.y);
+  // water caustics
+  ctx.strokeStyle='rgba(220,255,240,.16)';ctx.lineWidth=2;for(let x=Math.floor((player.x-W/2)/45)*45;x<player.x+W/2+45;x+=45){for(let y=Math.floor((player.y-H/2)/45)*45;y<player.y+H/2+45;y+=45){let a=Math.sin(x*.012+y*.009+world.angle*.015)*.8;ctx.beginPath();ctx.arc(x+Math.sin(world.angle*.01+y)*5,y+Math.cos(world.angle*.013+x)*4,10+a*4,0,Math.PI*2);ctx.stroke()}}
+  ctx.fillStyle='#f4df9c';ctx.beginPath();ctx.arc(world.x,world.y,world.r+12,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#79c96a';ctx.beginPath();ctx.arc(world.x,world.y,world.r-4,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#87d273';ctx.beginPath();ctx.arc(world.x-45,world.y-50,world.r*.55,0,Math.PI*2);ctx.fill();
+  // grid patches
+  ctx.globalAlpha=.12;ctx.fillStyle='#3f9f50';for(let i=-world.r;i<world.r;i+=38){ctx.beginPath();ctx.arc(world.x+i*.7,world.y+Math.sin(i)*18,24,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;
+  decor.forEach(d=>{ctx.fillStyle=d.hue==='rock'?'#789a84':'#58ad55';ctx.beginPath();ctx.arc(d.x,d.y,d.s,0,Math.PI*2);ctx.fill()});
+  resources.forEach(q=>{if(q.got)return;let bob=Math.sin(world.angle*.05+q.pulse)*2;if(q.kind==='wood'){ctx.fillStyle='#8a5d35';ctx.fillRect(q.x-11,q.y-10+bob,22,19);ctx.fillStyle='#4f9f48';ctx.beginPath();ctx.arc(q.x-8,q.y-14+bob,12,0,6.28);ctx.arc(q.x+8,q.y-14+bob,12,0,6.28);ctx.arc(q.x,q.y-23+bob,14,0,6.28);ctx.fill()}else{ctx.fillStyle='#71868a';ctx.beginPath();ctx.moveTo(q.x-13,q.y+8+bob);ctx.lineTo(q.x-8,q.y-13+bob);ctx.lineTo(q.x+8,q.y-10+bob);ctx.lineTo(q.x+14,q.y+8+bob);ctx.closePath();ctx.fill();ctx.fillStyle='#9eb1b0';ctx.beginPath();ctx.moveTo(q.x-8,q.y-13+bob);ctx.lineTo(q.x+1,q.y-3+bob);ctx.lineTo(q.x-13,q.y+8+bob);ctx.fill()}});
+  particles.forEach(p=>{ctx.globalAlpha=p.life;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);ctx.fill();ctx.globalAlpha=1});
+  // player shadow and body
+  ctx.fillStyle='rgba(28,70,67,.22)';ctx.beginPath();ctx.ellipse(player.x,player.y+12,17,8,0,0,6.28);ctx.fill();
+  ctx.save();ctx.translate(player.x,player.y);ctx.rotate(player.dir);ctx.fillStyle='#f4bd76';ctx.beginPath();ctx.arc(0,-2,13,0,6.28);ctx.fill();ctx.fillStyle='#e99a55';ctx.beginPath();ctx.arc(0,-5,14,Math.PI,6.28);ctx.fill();ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(-5,-4,3,0,6.28);ctx.arc(5,-4,3,0,6.28);ctx.fill();ctx.fillStyle='#3b4d48';ctx.beginPath();ctx.arc(-5,-4,1.2,0,6.28);ctx.arc(5,-4,1.2,0,6.28);ctx.fill();ctx.fillStyle='#ef6f55';ctx.beginPath();ctx.roundRect(-15,5,30,13,7);ctx.fill();ctx.restore();
+  ctx.restore();
+}
+function burst(x,y,color){for(let i=0;i<9;i++){let a=Math.random()*6.28,s=rand(20,70);particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:rand(2,5),life:1,color})}}
+function update(dt){world.angle+=dt*10;let dx=0,dy=0;if(keys.w||keys.arrowup)dy-=1;if(keys.s||keys.arrowdown)dy+=1;if(keys.a||keys.arrowleft)dx-=1;if(keys.d||keys.arrowright)dx+=1;
+ if(pointer.down){dx=pointer.x-(W/2);dy=pointer.y-(H/2);let l=Math.hypot(dx,dy);if(l<12){dx=0;dy=0}else{dx/=l;dy/=l}}
+ let joy=document.getElementBy?null:null;
+ if(joyX!==null&&joyY!==null){dx+=joyX;dy+=joyY}
+ let l=Math.hypot(dx,dy);if(l>.1){dx/=Math.max(1,l);dy/=Math.max(1,l);let nx=player.x+dx*145*dt,ny=player.y+dy*145*dt;if(dist(nx,ny,world.x,world.y)<world.r-18){player.x=nx;player.y=ny}player.dir=Math.atan2(dy,dx)+Math.PI/2;player.walk+=dt*10}
+ resources.forEach(q=>{if(!q.got&&dist(player.x,player.y,q.x,q.y)<35){q.got=true;if(q.kind==='wood')player.wood++;else player.stone++;burst(q.x,q.y,q.kind==='wood'?'#ffe36b':'#d8e9e7');updateHUD();if(q.kind==='wood'&&player.wood>=goal){expand()}}});
+ particles.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx*=.94;p.vy*=.94;p.life-=dt*1.8});particles=particles.filter(p=>p.life>0);
+}
+let joyX=0,joyY=0;
+function updateHUD(){document.getElementById('wood').textContent=player.wood;document.getElementById('stone').textContent=player.stone;document.getElementById('level').textContent=player.level;let pct=Math.min(100,player.wood/goal*100);document.getElementById('bar').style.width=pct+'%';document.getElementById('objective').textContent=player.wood>=goal?'Expand your land!':`Expand your land • gather ${goal-player.wood} wood`}
+function toast(t){let e=document.getElementById('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),1300)}
+function expand(){world.r+=95;player.level++;goal+=20;document.getElementById('panel').classList.add('show');document.getElementById('pTitle').textContent=`Level ${player.level}: Bigger Land!`;document.getElementById('pText').textContent=`Your island grew. Now gather ${goal-player.wood} wood to expand again.`;for(let i=0;i<15;i++)placeResource(i%4?'wood':'stone');updateHUD();toast('New territory unlocked!')}
+document.getElementById('pButton').onclick=()=>document.getElementById('panel').classList.remove('show');
+addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+canvas.addEventListener('pointermove',e=>{pointer.x=e.clientX;pointer.y=e.clientY});canvas.addEventListener('pointerdown',e=>{pointer.down=true;pointer.x=e.clientX;pointer.y=e.clientY});addEventListener('pointerup',()=>pointer.down=false);
+const joy=document.getElementById('joy'),knob=document.getElementById('knob');let activeJoy=false,jid=null;
+function moveJoy(e){if(!activeJoy)return;let r=joy.getBoundingClientRect(),x=e.clientX-(r.left+r.width/2),y=e.clientY-(r.top+r.height/2),l=Math.hypot(x,y),m=34;if(l>m){x=x/l*m;y=y/l*m}knob.style.transform=`translate(${x}px,${y}px)`;joyX=x/m;joyY=y/m}
+joy.addEventListener('pointerdown',e=>{activeJoy=true;jid=e.pointerId;joy.setPointerCapture(jid);moveJoy(e)});joy.addEventListener('pointermove',moveJoy);joy.addEventListener('pointerup',()=>{activeJoy=false;joyX=0;joyY=0;knob.style.transform='translate(0,0)'});
+let last=performance.now();function loop(t){let dt=Math.min(.033,(t-last)/1000);last=t;update(dt);draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);updateHUD();
+</script>
+</body>
+</html>
